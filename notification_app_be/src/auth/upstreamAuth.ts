@@ -1,10 +1,6 @@
-import { Log } from "logging-middleware";
+import { Log, setAuthToken } from "logging-middleware";
 import { config } from "../config/index.js";
-import {
-  readCredentials,
-  writeCredentials,
-  type StoredCredentials,
-} from "./credentialsStore.js";
+import { readCreds, writeCreds, type StoredCreds } from "./credentialsStore.js";
 
 interface RegisterResponse {
   email: string;
@@ -21,15 +17,11 @@ interface AuthResponse {
   expires_in: number;
 }
 
-interface CachedToken {
-  token: string;
-  expiresAt: number;
-}
-
-let cachedToken: CachedToken | null = null;
+let cachedToken: string | null = null;
+let expiresAt = 0;
 let inflight: Promise<string> | null = null;
 
-async function callRegister(): Promise<StoredCredentials> {
+async function register(): Promise<StoredCreds> {
   const missing: string[] = [];
   if (!config.email) missing.push("EMAIL");
   if (!config.name) missing.push("NAME");
@@ -38,17 +30,12 @@ async function callRegister(): Promise<StoredCredentials> {
   if (!config.rollNo) missing.push("ROLL_NO");
   if (missing.length > 0) {
     throw new Error(
-      `Cannot register without env vars: ${missing.join(", ")}. ` +
-        `Either fill them in .env or set CLIENT_ID/CLIENT_SECRET if you've already registered.`
+      `cannot register without: ${missing.join(", ")}. ` +
+        `set them in .env or set CLIENT_ID/CLIENT_SECRET if already registered.`
     );
   }
 
-  await Log(
-    "backend",
-    "info",
-    "auth",
-    "no client credentials cached; calling upstream /register"
-  );
+  await Log("backend", "info", "auth", "no creds cached, calling /register");
 
   const res = await fetch(`${config.evalBaseUrl}/register`, {
     method: "POST",
@@ -65,17 +52,12 @@ async function callRegister(): Promise<StoredCredentials> {
 
   if (!res.ok) {
     const body = await res.text();
-    await Log(
-      "backend",
-      "fatal",
-      "auth",
-      `register failed: ${res.status} ${body.slice(0, 200)}`
-    );
-    throw new Error(`Register failed (${res.status})`);
+    await Log("backend", "fatal", "auth", `register ${res.status}: ${body.slice(0, 200)}`);
+    throw new Error(`register failed (${res.status})`);
   }
 
   const body = (await res.json()) as RegisterResponse;
-  const stored: StoredCredentials = {
+  const stored: StoredCreds = {
     clientID: body.clientID,
     clientSecret: body.clientSecret,
     email: body.email,
@@ -83,11 +65,11 @@ async function callRegister(): Promise<StoredCredentials> {
     accessCode: body.accessCode,
     registeredAt: new Date().toISOString(),
   };
-  await writeCredentials(stored);
+  await writeCreds(stored);
   return stored;
 }
 
-async function resolveCredentials(): Promise<StoredCredentials> {
+async function getCreds(): Promise<StoredCreds> {
   if (config.clientId && config.clientSecret) {
     return {
       clientID: config.clientId,
@@ -98,20 +80,14 @@ async function resolveCredentials(): Promise<StoredCredentials> {
       registeredAt: new Date().toISOString(),
     };
   }
-  const cached = await readCredentials();
+  const cached = await readCreds();
   if (cached) return cached;
-  return callRegister();
+  return register();
 }
 
-async function fetchAccessToken(): Promise<string> {
-  const creds = await resolveCredentials();
-
-  await Log(
-    "backend",
-    "info",
-    "auth",
-    "requesting fresh access token from upstream /auth"
-  );
+async function fetchToken(): Promise<string> {
+  const creds = await getCreds();
+  await Log("backend", "info", "auth", "requesting access token from /auth");
 
   const res = await fetch(`${config.evalBaseUrl}/auth`, {
     method: "POST",
@@ -128,36 +104,22 @@ async function fetchAccessToken(): Promise<string> {
 
   if (!res.ok) {
     const body = await res.text();
-    await Log(
-      "backend",
-      "fatal",
-      "auth",
-      `auth failed: ${res.status} ${body.slice(0, 200)}`
-    );
-    throw new Error(`Auth failed (${res.status})`);
+    await Log("backend", "fatal", "auth", `auth ${res.status}: ${body.slice(0, 200)}`);
+    throw new Error(`auth failed (${res.status})`);
   }
 
   const body = (await res.json()) as AuthResponse;
-  const skewMs = 30_000;
-  const expiresAt = Date.now() + Math.max(0, body.expires_in * 1000 - skewMs);
-  cachedToken = { token: body.access_token, expiresAt };
-  await Log(
-    "backend",
-    "info",
-    "auth",
-    `obtained access token; valid for ~${Math.round(
-      (expiresAt - Date.now()) / 1000
-    )}s`
-  );
-  return body.access_token;
+  cachedToken = body.access_token;
+  expiresAt = Date.now() + Math.max(0, body.expires_in * 1000 - 30_000); // 30s skew
+  setAuthToken(cachedToken);
+  await Log("backend", "info", "auth", "got new access token");
+  return cachedToken;
 }
 
-export async function getAccessToken(forceRefresh = false): Promise<string> {
-  if (!forceRefresh && cachedToken && Date.now() < cachedToken.expiresAt) {
-    return cachedToken.token;
-  }
+export async function getAccessToken(force = false): Promise<string> {
+  if (!force && cachedToken && Date.now() < expiresAt) return cachedToken;
   if (inflight) return inflight;
-  inflight = fetchAccessToken().finally(() => {
+  inflight = fetchToken().finally(() => {
     inflight = null;
   });
   return inflight;
@@ -165,4 +127,5 @@ export async function getAccessToken(forceRefresh = false): Promise<string> {
 
 export function invalidateToken(): void {
   cachedToken = null;
+  expiresAt = 0;
 }

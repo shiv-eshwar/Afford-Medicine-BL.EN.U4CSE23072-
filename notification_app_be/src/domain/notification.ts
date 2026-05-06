@@ -25,19 +25,16 @@ export const TYPE_WEIGHTS: Record<NotificationType, number> = {
   Event: 1,
 };
 
-export function isNotificationType(v: unknown): v is NotificationType {
+export function isType(v: unknown): v is NotificationType {
   return v === "Event" || v === "Result" || v === "Placement";
 }
 
-export function fromUpstream(
-  u: UpstreamNotification,
-  is_read: boolean
-): Notification {
+export function fromUpstream(u: UpstreamNotification, isRead: boolean): Notification {
   return {
     id: u.ID,
     type: u.Type,
     message: u.Message,
     timestamp: u.Timestamp,
-    is_read,
+    is_read: isRead,
   };
 }

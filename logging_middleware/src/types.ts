@@ -2,7 +2,7 @@ export type Stack = "backend" | "frontend";
 
 export type Level = "debug" | "info" | "warn" | "error" | "fatal";
 
-export type BackendOnlyPackage =
+export type BackendPkg =
   | "cache"
   | "controller"
   | "cron_job"
@@ -13,7 +13,7 @@ export type BackendOnlyPackage =
   | "route"
   | "service";
 
-export type FrontendOnlyPackage =
+export type FrontendPkg =
   | "api"
   | "component"
   | "hook"
@@ -21,19 +21,11 @@ export type FrontendOnlyPackage =
   | "state"
   | "style";
 
-export type SharedPackage = "auth" | "config" | "middleware" | "utils";
+export type SharedPkg = "auth" | "config" | "middleware" | "utils";
 
-export type Package = BackendOnlyPackage | FrontendOnlyPackage | SharedPackage;
+export type Pkg = BackendPkg | FrontendPkg | SharedPkg;
 
 export interface LogResponse {
   logID: string;
   message: string;
-}
-
-export interface LoggerConfig {
-  baseUrl?: string;
-  token?: string;
-  tokenProvider?: () => string | Promise<string>;
-  timeoutMs?: number;
-  fetchImpl?: typeof fetch;
 }

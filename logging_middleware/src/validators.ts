@@ -1,23 +1,7 @@
-import type {
-  BackendOnlyPackage,
-  FrontendOnlyPackage,
-  Level,
-  Package,
-  SharedPackage,
-  Stack,
-} from "./types";
+const STACKS = new Set(["backend", "frontend"]);
+const LEVELS = new Set(["debug", "info", "warn", "error", "fatal"]);
 
-const STACKS: ReadonlySet<Stack> = new Set(["backend", "frontend"]);
-
-const LEVELS: ReadonlySet<Level> = new Set([
-  "debug",
-  "info",
-  "warn",
-  "error",
-  "fatal",
-]);
-
-const BACKEND_ONLY: ReadonlySet<BackendOnlyPackage> = new Set([
+const BACKEND_ONLY = new Set([
   "cache",
   "controller",
   "cron_job",
@@ -29,7 +13,7 @@ const BACKEND_ONLY: ReadonlySet<BackendOnlyPackage> = new Set([
   "service",
 ]);
 
-const FRONTEND_ONLY: ReadonlySet<FrontendOnlyPackage> = new Set([
+const FRONTEND_ONLY = new Set([
   "api",
   "component",
   "hook",
@@ -38,63 +22,20 @@ const FRONTEND_ONLY: ReadonlySet<FrontendOnlyPackage> = new Set([
   "style",
 ]);
 
-const SHARED: ReadonlySet<SharedPackage> = new Set([
-  "auth",
-  "config",
-  "middleware",
-  "utils",
-]);
+const SHARED = new Set(["auth", "config", "middleware", "utils"]);
 
-export class LogValidationError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "LogValidationError";
-  }
-}
+export function check(stack: string, level: string, pkg: string, message: string): boolean {
+  if (!STACKS.has(stack)) return false;
+  if (!LEVELS.has(level)) return false;
 
-export function validate(
-  stack: string,
-  level: string,
-  pkg: string,
-  message: string
-): { stack: Stack; level: Level; pkg: Package; message: string } {
-  const s = stack?.toLowerCase?.() as Stack;
-  const l = level?.toLowerCase?.() as Level;
-  const p = pkg?.toLowerCase?.() as Package;
+  const inShared = SHARED.has(pkg);
+  const inBackend = BACKEND_ONLY.has(pkg);
+  const inFrontend = FRONTEND_ONLY.has(pkg);
 
-  if (!STACKS.has(s)) {
-    throw new LogValidationError(
-      `Invalid stack "${stack}". Allowed: backend | frontend`
-    );
-  }
-  if (!LEVELS.has(l)) {
-    throw new LogValidationError(
-      `Invalid level "${level}". Allowed: debug | info | warn | error | fatal`
-    );
-  }
+  if (!inShared && !inBackend && !inFrontend) return false;
+  if (stack === "backend" && inFrontend) return false;
+  if (stack === "frontend" && inBackend) return false;
 
-  const isShared = SHARED.has(p as SharedPackage);
-  const isBackendOnly = BACKEND_ONLY.has(p as BackendOnlyPackage);
-  const isFrontendOnly = FRONTEND_ONLY.has(p as FrontendOnlyPackage);
-
-  if (!isShared && !isBackendOnly && !isFrontendOnly) {
-    throw new LogValidationError(`Unknown package "${pkg}".`);
-  }
-
-  if (s === "backend" && isFrontendOnly) {
-    throw new LogValidationError(
-      `Package "${pkg}" is not allowed in stack "backend"`
-    );
-  }
-  if (s === "frontend" && isBackendOnly) {
-    throw new LogValidationError(
-      `Package "${pkg}" is not allowed in stack "frontend"`
-    );
-  }
-
-  if (typeof message !== "string" || message.length === 0) {
-    throw new LogValidationError("Log message must be a non-empty string");
-  }
-
-  return { stack: s, level: l, pkg: p, message };
+  if (typeof message !== "string" || message.length === 0) return false;
+  return true;
 }

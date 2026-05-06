@@ -1,52 +1,42 @@
 # logging_middleware
 
-A reusable, dependency-free TypeScript logger that posts structured entries to
-the upstream evaluation service's `POST /evaluation-service/logs` endpoint.
+Reusable logger that posts to `POST /evaluation-service/logs`. Used by both
+the backend and the frontend so we never have to use `console.*`.
 
-It is consumed by both the backend and frontend so that all observability flows
-through a single contract — no inbuilt loggers, no `console.*`.
-
-## Public API
+## Usage
 
 ```ts
-import { Log, configureLogger } from "logging-middleware";
-
-configureLogger({
-  baseUrl: "http://20.207.122.201/evaluation-service",
-  tokenProvider: async () => getCurrentBearerToken(),
-});
+import { Log } from "logging-middleware";
 
 await Log("backend", "error", "handler", "received string, expected bool");
-await Log("frontend", "info", "page", "priority inbox rendered with n=10");
+await Log("frontend", "info", "page", "priority inbox rendered");
 ```
 
-## Function signature
+`Log(stack, level, package, message)` returns the `{ logID, message }` body
+on success or `null` on any failure (network down, 4xx, validation error).
+We swallow errors on purpose: broken logging shouldn't break the app.
 
-```ts
-Log(
-  stack: "backend" | "frontend",
-  level: "debug" | "info" | "warn" | "error" | "fatal",
-  pkg: BackendOnlyPackage | FrontendOnlyPackage | SharedPackage,
-  message: string
-): Promise<{ logID: string; message: string } | null>
-```
+Allowed values:
 
-| Stack    | Allowed packages                                                                                                          |
-| -------- | ------------------------------------------------------------------------------------------------------------------------- |
-| backend  | `cache`, `controller`, `cron_job`, `db`, `domain`, `handler`, `repository`, `route`, `service`, `auth`, `config`, `middleware`, `utils` |
-| frontend | `api`, `component`, `hook`, `page`, `state`, `style`, `auth`, `config`, `middleware`, `utils`                              |
+- `stack`: `backend` | `frontend`
+- `level`: `debug` | `info` | `warn` | `error` | `fatal`
+- backend-only `package`: `cache`, `controller`, `cron_job`, `db`, `domain`,
+  `handler`, `repository`, `route`, `service`
+- frontend-only `package`: `api`, `component`, `hook`, `page`, `state`, `style`
+- shared `package`: `auth`, `config`, `middleware`, `utils`
 
-## Behaviour
+The logger validates the package against the stack so we can't accidentally
+log with `db` from the frontend.
 
-- Validates `stack` / `level` / `package` and rejects mismatches (e.g. logging with package `db` from a frontend stack).
-- All values are forced to lowercase before being sent.
-- `Authorization: Bearer <token>` automatically prepended if `token` or `tokenProvider` is configured.
-- Network and parsing failures are swallowed and return `null` — logging never breaks the caller.
-- Pure `fetch`; runs in Node 18+ and modern browsers without polyfills.
+## Auth token
+
+The logger sends `Authorization: Bearer <token>` if `LOG_AUTH_TOKEN` is set
+in the environment, or you can call `setAuthToken()` from app code (used by
+the backend's token manager so logs piggyback on the same auth flow).
 
 ## Build
 
 ```bash
 npm install
-npm run build   # emits dist/index.js (ESM), dist/index.cjs (CJS), dist/index.d.ts
+npm run build   # ESM + CJS + d.ts in dist/
 ```

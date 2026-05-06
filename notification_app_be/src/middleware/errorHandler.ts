@@ -1,4 +1,4 @@
-import type { ErrorRequestHandler, NextFunction, Request, Response } from "express";
+import type { ErrorRequestHandler, Request, Response } from "express";
 import { Log } from "logging-middleware";
 
 interface HttpError extends Error {
@@ -6,18 +6,13 @@ interface HttpError extends Error {
   code?: string;
 }
 
-export const notFoundHandler = (req: Request, res: Response): void => {
+export function notFoundHandler(req: Request, res: Response): void {
   res.status(404).json({
     error: { code: "NOT_FOUND", message: `route not found: ${req.method} ${req.path}` },
   });
-};
+}
 
-export const errorHandler: ErrorRequestHandler = (
-  err: HttpError,
-  _req: Request,
-  res: Response,
-  _next: NextFunction
-): void => {
+export const errorHandler: ErrorRequestHandler = (err: HttpError, _req, res, _next) => {
   const status = err.status ?? 500;
   const code = err.code ?? (status >= 500 ? "INTERNAL_ERROR" : "BAD_REQUEST");
   const message = err.message ?? "unexpected server error";
@@ -26,7 +21,7 @@ export const errorHandler: ErrorRequestHandler = (
     "backend",
     status >= 500 ? "error" : "warn",
     "middleware",
-    `error in request pipeline: status=${status} code=${code} msg=${message}`
+    `error status=${status} code=${code} msg=${message}`
   );
 
   res.status(status).json({ error: { code, message } });

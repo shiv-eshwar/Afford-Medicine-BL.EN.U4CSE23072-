@@ -1,16 +1,11 @@
 import express from "express";
 import cors from "cors";
-import { Log, configureLogger } from "logging-middleware";
+import { Log } from "logging-middleware";
 import { config } from "./config/index.js";
 import { getAccessToken } from "./auth/upstreamAuth.js";
 import { requestLogger } from "./middleware/requestLogger.js";
 import { errorHandler, notFoundHandler } from "./middleware/errorHandler.js";
 import { notificationsRouter } from "./route/notifications.routes.js";
-
-configureLogger({
-  baseUrl: config.evalBaseUrl,
-  tokenProvider: () => getAccessToken(),
-});
 
 const app = express();
 
@@ -20,11 +15,9 @@ app.use(
     origin(origin, cb) {
       if (!origin) return cb(null, true);
       const ok =
-        config.allowedOrigins.includes("*") ||
-        config.allowedOrigins.includes(origin);
+        config.allowedOrigins.includes("*") || config.allowedOrigins.includes(origin);
       cb(ok ? null : new Error(`origin not allowed: ${origin}`), ok);
     },
-    credentials: false,
   })
 );
 app.use(requestLogger);
@@ -38,46 +31,31 @@ app.use("/api/notifications", notificationsRouter);
 app.use(notFoundHandler);
 app.use(errorHandler);
 
-async function bootstrap(): Promise<void> {
+async function start() {
   await Log(
     "backend",
     "info",
     "config",
-    `bootstrapping backend in ${config.nodeEnv} mode on port ${config.port}`
+    `starting backend on port ${config.port} (${config.nodeEnv})`
   );
   try {
     await getAccessToken();
-    await Log(
-      "backend",
-      "info",
-      "auth",
-      "warmed upstream access token at startup"
-    );
+    await Log("backend", "info", "auth", "warmed access token at startup");
   } catch (err) {
     await Log(
       "backend",
       "error",
       "auth",
-      `failed to warm token at startup: ${(err as Error).message}`
+      `could not warm token: ${(err as Error).message}`
     );
   }
 
   app.listen(config.port, () => {
-    void Log(
-      "backend",
-      "info",
-      "config",
-      `backend ready at http://localhost:${config.port}`
-    );
+    void Log("backend", "info", "config", `ready at http://localhost:${config.port}`);
   });
 }
 
-bootstrap().catch(async (err) => {
-  await Log(
-    "backend",
-    "fatal",
-    "config",
-    `bootstrap failed: ${(err as Error).message}`
-  );
+start().catch(async (err) => {
+  await Log("backend", "fatal", "config", `bootstrap failed: ${(err as Error).message}`);
   process.exit(1);
 });

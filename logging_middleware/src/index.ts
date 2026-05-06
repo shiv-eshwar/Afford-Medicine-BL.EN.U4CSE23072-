@@ -1,12 +1,10 @@
-export { Log, configureLogger } from "./client";
-export { LogValidationError } from "./validators";
+export { Log, setAuthToken } from "./client";
 export type {
   Stack,
   Level,
-  Package,
-  BackendOnlyPackage,
-  FrontendOnlyPackage,
-  SharedPackage,
+  Pkg,
+  BackendPkg,
+  FrontendPkg,
+  SharedPkg,
   LogResponse,
-  LoggerConfig,
 } from "./types";

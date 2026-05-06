@@ -1,60 +1,35 @@
 import { Log } from "logging-middleware";
 
-/**
- * In-memory read-state repository.
- *
- * The brief explicitly forbids storing the notifications themselves
- * ("you need not store the notifications in a database, nor are you supposed
- *  to hard-code or create notifications yourself"). It is silent on read
- * state, which is needed to distinguish new vs. already-viewed in the UI.
- *
- * We keep a process-local set of read IDs. The frontend mirrors the same
- * data in localStorage so a fresh BE process doesn't lose user state.
- */
-class ReadStateRepo {
-  private readIds = new Set<string>();
+// in-memory read state. brief says don't store notifications themselves,
+// but we still need to know which ones the user has seen to render new vs
+// already-viewed in the UI. FE also mirrors this in localStorage.
+const readIds = new Set<string>();
 
+export const readStateRepo = {
   isRead(id: string): boolean {
-    return this.readIds.has(id);
-  }
+    return readIds.has(id);
+  },
 
   markRead(id: string): void {
-    if (!this.readIds.has(id)) {
-      this.readIds.add(id);
-      void Log("backend", "info", "repository", `marked notification ${id} as read`);
+    if (!readIds.has(id)) {
+      readIds.add(id);
+      void Log("backend", "info", "repository", `marked ${id} read`);
     }
-  }
+  },
 
   markManyRead(ids: Iterable<string>): number {
-    let count = 0;
+    let n = 0;
     for (const id of ids) {
-      if (!this.readIds.has(id)) {
-        this.readIds.add(id);
-        count += 1;
+      if (!readIds.has(id)) {
+        readIds.add(id);
+        n += 1;
       }
     }
-    if (count > 0) {
-      void Log(
-        "backend",
-        "info",
-        "repository",
-        `bulk-marked ${count} notifications as read`
-      );
-    }
-    return count;
-  }
-
-  unmarkRead(id: string): void {
-    this.readIds.delete(id);
-  }
-
-  snapshotIds(): string[] {
-    return [...this.readIds];
-  }
+    if (n > 0) void Log("backend", "info", "repository", `bulk-marked ${n} read`);
+    return n;
+  },
 
   size(): number {
-    return this.readIds.size;
-  }
-}
-
-export const readStateRepo = new ReadStateRepo();
+    return readIds.size;
+  },
+};

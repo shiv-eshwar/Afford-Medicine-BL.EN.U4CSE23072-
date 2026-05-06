@@ -1,12 +1,8 @@
 import { Log } from "logging-middleware";
-import {
-  decorateWithReadState,
-  fetchUpstreamNotifications,
-  fetchAllUpstreamNotifications,
-} from "./upstream.service.js";
+import { decorate, fetchUpstreamNotifications } from "./upstream.service.js";
 import {
   TYPE_WEIGHTS,
-  isNotificationType,
+  isType,
   type Notification,
   type NotificationType,
   type PriorityNotification,
@@ -23,36 +19,29 @@ export interface ListParams {
 
 export interface ListResult {
   data: Notification[];
-  meta: {
-    page: number;
-    limit: number;
-    total: number;
-  };
+  meta: { page: number; limit: number; total: number };
 }
 
 export interface PriorityResult {
   data: PriorityNotification[];
-  meta: {
-    n: number;
-    weights: Record<NotificationType, number>;
-  };
+  meta: { n: number; weights: Record<NotificationType, number> };
 }
 
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 100;
 
-function clamp(value: number | undefined, def: number, max: number): number {
-  if (!Number.isFinite(value as number)) return def;
-  const v = Math.floor(value as number);
-  if (v < 1) return def;
-  return Math.min(v, max);
+function clamp(v: number | undefined, def: number, max: number): number {
+  if (!Number.isFinite(v as number)) return def;
+  const n = Math.floor(v as number);
+  if (n < 1) return def;
+  return Math.min(n, max);
 }
 
 export async function list(params: ListParams = {}): Promise<ListResult> {
   const limit = clamp(params.limit, DEFAULT_LIMIT, MAX_LIMIT);
   const page = clamp(params.page, 1, 1_000_000);
-  const notificationType =
-    params.notificationType && isNotificationType(params.notificationType)
+  const type =
+    params.notificationType && isType(params.notificationType)
       ? params.notificationType
       : undefined;
 
@@ -60,33 +49,21 @@ export async function list(params: ListParams = {}): Promise<ListResult> {
     "backend",
     "info",
     "service",
-    `list request: page=${page} limit=${limit} type=${notificationType ?? "all"} is_read=${params.isRead ?? "any"}`
+    `list page=${page} limit=${limit} type=${type ?? "all"} is_read=${params.isRead ?? "any"}`
   );
 
-  const upstream = await fetchUpstreamNotifications({
-    limit,
-    page,
-    notificationType,
-  });
-
-  let decorated = decorateWithReadState(upstream);
+  const upstream = await fetchUpstreamNotifications({ limit, page, notificationType: type });
+  let items = decorate(upstream);
 
   if (typeof params.isRead === "boolean") {
-    decorated = decorated.filter((n) => n.is_read === params.isRead);
+    items = items.filter((n) => n.is_read === params.isRead);
   }
 
-  return {
-    data: decorated,
-    meta: {
-      page,
-      limit,
-      total: decorated.length,
-    },
-  };
+  return { data: items, meta: { page, limit, total: items.length } };
 }
 
 export async function priority(
-  n: number = 10,
+  n = 10,
   notificationType?: NotificationType
 ): Promise<PriorityResult> {
   const cap = clamp(n, 10, 50);
@@ -94,28 +71,21 @@ export async function priority(
     "backend",
     "info",
     "service",
-    `priority request: n=${cap} type=${notificationType ?? "all"}`
+    `priority n=${cap} type=${notificationType ?? "all"}`
   );
 
-  const upstream = await fetchAllUpstreamNotifications(notificationType);
-  const decorated = decorateWithReadState(upstream);
-  const top = topNPriority(decorated, cap);
+  const upstream = await fetchUpstreamNotifications({ notificationType });
+  const items = decorate(upstream);
+  const top = topNPriority(items, cap);
 
-  return {
-    data: top,
-    meta: {
-      n: cap,
-      weights: TYPE_WEIGHTS,
-    },
-  };
+  return { data: top, meta: { n: cap, weights: TYPE_WEIGHTS } };
 }
 
-export function markRead(id: string): { id: string; is_read: true } {
+export function markRead(id: string) {
   readStateRepo.markRead(id);
-  return { id, is_read: true };
+  return { id, is_read: true as const };
 }
 
-export function markAllRead(ids: string[]): { count: number } {
-  const count = readStateRepo.markManyRead(ids);
-  return { count };
+export function markAllRead(ids: string[]) {
+  return { count: readStateRepo.markManyRead(ids) };
 }

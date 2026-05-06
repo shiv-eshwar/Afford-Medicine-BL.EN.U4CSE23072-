@@ -2,9 +2,9 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { Log } from "logging-middleware";
 
-const CRED_FILE = path.resolve(process.cwd(), ".credentials.json");
+const FILE = path.resolve(process.cwd(), ".credentials.json");
 
-export interface StoredCredentials {
+export interface StoredCreds {
   clientID: string;
   clientSecret: string;
   email?: string;
@@ -13,39 +13,27 @@ export interface StoredCredentials {
   registeredAt: string;
 }
 
-export async function readCredentials(): Promise<StoredCredentials | null> {
+export async function readCreds(): Promise<StoredCreds | null> {
   try {
-    const raw = await fs.readFile(CRED_FILE, "utf8");
-    const parsed = JSON.parse(raw) as StoredCredentials;
-    if (
-      typeof parsed?.clientID === "string" &&
-      typeof parsed?.clientSecret === "string"
-    ) {
-      return parsed;
-    }
+    const raw = await fs.readFile(FILE, "utf8");
+    const parsed = JSON.parse(raw) as StoredCreds;
+    if (parsed?.clientID && parsed?.clientSecret) return parsed;
     return null;
   } catch {
     return null;
   }
 }
 
-export async function writeCredentials(
-  c: StoredCredentials
-): Promise<void> {
+export async function writeCreds(c: StoredCreds): Promise<void> {
   try {
-    await fs.writeFile(CRED_FILE, JSON.stringify(c, null, 2), "utf8");
-    await Log(
-      "backend",
-      "info",
-      "auth",
-      "persisted upstream client credentials to local cache"
-    );
+    await fs.writeFile(FILE, JSON.stringify(c, null, 2), "utf8");
+    await Log("backend", "info", "auth", "saved client credentials to local file");
   } catch (err) {
     await Log(
       "backend",
       "error",
       "auth",
-      `failed to persist credentials: ${(err as Error).message}`
+      `could not save credentials: ${(err as Error).message}`
     );
   }
 }
